@@ -1,0 +1,3 @@
+[tools]
+cosign = "latest"
+prettier = "latest"

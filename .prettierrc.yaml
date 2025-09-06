@@ -1,0 +1,5 @@
+semi: true
+overrides:
+  - files: ".github/workflows/**/*.{yml,yaml}"
+    options:
+      singleQuote: true
