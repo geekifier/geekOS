@@ -10,17 +10,18 @@ on:
     branches:
       - main
     paths-ignore:
-      - '**/README.md'
+      - '**.md'
       - '/assets/**'
+      - '.github/workflows/build_iso*.yml'
   workflow_dispatch:
 
 env:
   IMAGE_DESC: 'geekOS Bazzite Image'
   IMAGE_KEYWORDS: 'bootc,ublue,universal-blue,bazzite,geekos,custom'
   IMAGE_LOGO_URL: 'https://raw.githubusercontent.com/geekifier/geekos/master/assets/img/geekos_cropped.png'
-  IMAGE_NAME: '${{ github.event.repository.name }}'
-  IMAGE_REGISTRY: 'ghcr.io/${{ github.repository_owner }}'
   DEFAULT_TAG: 'latest'
+  PULL_IMAGE_REGISTRY: ghcr.io/ublue-os
+  PUSH_IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}-${{ inputs.brand_name}}-${{ inputs.stream_name }}
@@ -36,12 +37,21 @@ jobs:
       packages: write
       id-token: write
 
+    strategy:
+      fail-fast: false
+      matrix:
+        image_map:
+          [bazzite-gnome:geekos, bazzite-gnome-nvidia-open:geekos-nvidia]
+
     steps:
-      - name: Prepare environment
+      - name: Set source and target image names
         run: |
-          # Lowercase the image uri
-          echo "IMAGE_REGISTRY=${IMAGE_REGISTRY,,}" >> ${GITHUB_ENV}
-          echo "IMAGE_NAME=${IMAGE_NAME,,}" >> ${GITHUB_ENV}
+          # Split the matrix input into source and target image names
+          IFS=: read -r SOURCE_IMAGE TARGET_IMAGE <<< "${{ matrix.image_map }}"
+          # Output registry and image names to env in lowercase
+          echo "PUSH_IMAGE_REGISTRY=${PUSH_IMAGE_REGISTRY,,}" >> ${GITHUB_ENV}
+          echo "SOURCE_IMAGE_NAME=${SOURCE_IMAGE,,}" >> ${GITHUB_ENV}
+          echo "TARGET_IMAGE_NAME=${TARGET_IMAGE,,}" >> ${GITHUB_ENV}
 
       # These stage versions are pinned by https://github.com/renovatebot/renovate
       - name: Checkout
@@ -80,13 +90,13 @@ jobs:
             type=sha,enable=${{ github.event_name == 'pull_request' }}
             type=ref,event=pr
           labels: |
-            io.artifacthub.package.readme-url=https://raw.githubusercontent.com/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}/refs/heads/main/README.md
+            io.artifacthub.package.readme-url=https://raw.githubusercontent.com/${{ env.PUSH_IMAGE_REGISTRY }}/${{ env.TARGET_IMAGE_NAME }}/refs/heads/main/README.md
             org.opencontainers.image.created=${{ steps.date.outputs.date }}
             org.opencontainers.image.description=${{ env.IMAGE_DESC }}
-            org.opencontainers.image.documentation=https://raw.githubusercontent.com/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}/refs/heads/main/README.md
-            org.opencontainers.image.source=https://github.com/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}/blob/main/Containerfile
-            org.opencontainers.image.title=${{ env.IMAGE_NAME }}
-            org.opencontainers.image.url=https://github.com/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+            org.opencontainers.image.documentation=https://raw.githubusercontent.com/${{ env.PUSH_IMAGE_REGISTRY }}/${{ env.TARGET_IMAGE_NAME }}/refs/heads/main/README.md
+            org.opencontainers.image.source=https://github.com/${{ env.PUSH_IMAGE_REGISTRY }}/${{ env.TARGET_IMAGE_NAME }}/blob/main/Containerfile
+            org.opencontainers.image.title=${{ github.env.TARGET_IMAGE_NAME }}
+            org.opencontainers.image.url=https://github.com/${{ env.PUSH_IMAGE_REGISTRY }}/${{ env.TARGET_IMAGE_NAME }}
             org.opencontainers.image.vendor=${{ github.repository_owner }}
             org.opencontainers.image.version=${{ env.DEFAULT_TAG }}.{{date 'YYYYMMDD'}}
             io.artifacthub.package.deprecated=false
@@ -106,34 +116,15 @@ jobs:
             ./Containerfile
           # Postfix image name with -custom to make it a little more descriptive
           # Syntax: https://docs.github.com/en/actions/learn-github-actions/expressions#format
-          image: ${{ env.IMAGE_NAME }}
-          tags: ${{ steps.metadata.outputs.tags }}
-          labels: ${{ steps.metadata.outputs.labels }}
+          image: '${{ env.TARGET_IMAGE_NAME }}'
+          tags: '${{ steps.metadata.outputs.tags }}'
+          labels: '${{ steps.metadata.outputs.labels }}'
           oci: false
-
-      # Rechunk is a script that we use on Universal Blue to make sure there isnt a single huge layer when your image gets published.
-      # This does not make your image faster to download, just provides better resumability and fixes a few errors.
-      # Documentation for Rechunk is provided on their github repository at https://github.com/hhd-dev/rechunk
-      # You can enable it by uncommenting the following lines:
-      # - name: Run Rechunker
-      #   id: rechunk
-      #   uses: hhd-dev/rechunk@f153348d8100c1f504dec435460a0d7baf11a9d2 # v1.1.1
-      #   with:
-      #     rechunk: 'ghcr.io/hhd-dev/rechunk:v1.0.1'
-      #     ref: "localhost/${{ env.IMAGE_NAME }}:${{ env.DEFAULT_TAG }}"
-      #     prev-ref: "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.DEFAULT_TAG }}"
-      #     skip_compression: true
-      #     version: ${{ env.CENTOS_VERSION }}
-      #     labels: ${{ steps.metadata.outputs.labels }} # Rechunk strips out all the labels during build, this needs to be reapplied here with newline separator
-
-      # This is necessary so that the podman socket can find the rechunked image on its storage
-      # - name: Load in podman and tag
-      #   run: |
-      #     IMAGE=$(podman pull ${{ steps.rechunk.outputs.ref }})
-      #     sudo rm -rf ${{ steps.rechunk.outputs.output }}
-      #     for tag in ${{ steps.metadata.outputs.tags }}; do
-      #       podman tag $IMAGE ${{ env.IMAGE_NAME }}:$tag
-      #     done
+          extra-args: |
+            --target ${{ env.TARGET_IMAGE_NAME }}
+          build-args: |
+            SOURCE_IMAGE_NAME=${{ env.SOURCE_IMAGE_NAME }}
+            TARGET_IMAGE_NAME=${{ env.TARGET_IMAGE_NAME }}
 
       # These `if` statements are so that pull requests for your custom images do not make it publish any packages under your name without you knowing
       # They also check if the runner is on the default branch so that things like the merge queue (if you enable it), are going to work
@@ -153,8 +144,8 @@ jobs:
           REGISTRY_USER: ${{ github.actor }}
           REGISTRY_PASSWORD: ${{ github.token }}
         with:
-          registry: ${{ env.IMAGE_REGISTRY }}
-          image: ${{ env.IMAGE_NAME }}
+          registry: ${{ env.PUSH_IMAGE_REGISTRY }}
+          image: ${{ env.TARGET_IMAGE_NAME }}
           tags: ${{ steps.metadata.outputs.tags }}
           username: ${{ env.REGISTRY_USER }}
           password: ${{ env.REGISTRY_PASSWORD }}
@@ -170,7 +161,7 @@ jobs:
       - name: Sign container image
         if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         run: |
-          IMAGE_FULL="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}"
+          IMAGE_FULL="${{ env.PUSH_IMAGE_REGISTRY }}/${{ env.TARGET_IMAGE_NAME }}"
           for tag in ${{ steps.metadata.outputs.tags }}; do
             cosign sign -y --key env://COSIGN_PRIVATE_KEY $IMAGE_FULL:$tag
           done
