@@ -24,7 +24,7 @@ env:
   PUSH_IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}-${{ inputs.brand_name}}-${{ inputs.stream_name }}
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -108,6 +108,13 @@ jobs:
           sep-tags: ' '
           sep-annotations: ' '
 
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build Image
         id: build_image
         uses: redhat-actions/buildah-build@7a95fa7ee0f02d552a32753e7414641a04307056 # v2
@@ -119,23 +126,20 @@ jobs:
           image: '${{ env.TARGET_IMAGE_NAME }}'
           tags: '${{ steps.metadata.outputs.tags }}'
           labels: '${{ steps.metadata.outputs.labels }}'
+          layers: true
           oci: false
           extra-args: |
             --target ${{ env.TARGET_IMAGE_NAME }}
+          # Did not observe much performance impact from ghcr.io caching, will revisit.
+          # extra-args: |
+          #   --cache-to ${{ env.PUSH_IMAGE_REGISTRY }}/cache/${{ env.TARGET_IMAGE_NAME }}
+          #   --cache-from ${{ env.PUSH_IMAGE_REGISTRY }}/cache/${{ env.TARGET_IMAGE_NAME }}
           build-args: |
             SOURCE_IMAGE_NAME=${{ env.SOURCE_IMAGE_NAME }}
             TARGET_IMAGE_NAME=${{ env.TARGET_IMAGE_NAME }}
 
       # These `if` statements are so that pull requests for your custom images do not make it publish any packages under your name without you knowing
       # They also check if the runner is on the default branch so that things like the merge queue (if you enable it), are going to work
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Push To GHCR
         uses: redhat-actions/push-to-registry@5ed88d269cf581ea9ef6dd6806d01562096bee9c # v2
         if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
