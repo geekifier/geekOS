@@ -19,9 +19,9 @@ env:
   IMAGE_DESC: 'geekOS Bazzite Image'
   IMAGE_KEYWORDS: 'bootc,ublue,universal-blue,bazzite,geekos,custom'
   IMAGE_LOGO_URL: 'https://raw.githubusercontent.com/geekifier/geekos/master/assets/img/geekos_cropped.png'
-  DEFAULT_TAG: 'latest'
   PULL_IMAGE_REGISTRY: ghcr.io/ublue-os
   PUSH_IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
+  DEFAULT_BRANCH: main
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
@@ -75,6 +75,11 @@ jobs:
           # https://linux.die.net/man/1/date
           echo "date=$(date -u +%Y\-%m\-%d\T%H\:%M\:%S\Z)" >> $GITHUB_OUTPUT
 
+      - name: Set base tag name
+        id: set_base
+        run: |
+          echo "base_tag=${{ github.ref_name == env.DEFAULT_BRANCH && github.ref_name || 'dev' }}" >> "$GITHUB_OUTPUT"
+
       # Image metadata for https://artifacthub.io/ - This is optional but is highly recommended so we all can get a index of all the custom images
       # The metadata by itself is not going to do anything, you choose if you want your image to be on ArtifactHub or not.
       - name: Image Metadata
@@ -84,11 +89,10 @@ jobs:
           # This generates all the tags for your image, you can add custom tags here too!
           # Default tags are "$DEFAULT_TAG" and "$DEFAULT_TAG.$date".
           tags: |
-            type=raw,value=${{ env.DEFAULT_TAG }}
-            type=raw,value=${{ env.DEFAULT_TAG }}.{{date 'YYYYMMDD'}}
-            type=raw,value={{date 'YYYYMMDD'}}
+            type=raw,value=${{ steps.set_base.outputs.base_tag }}
+            type=raw,value=${{ steps.set_base.outputs.base_tag }}.{{date 'YYYYMMDD'}}
             type=sha,enable=${{ github.event_name == 'pull_request' }}
-            type=ref,event=pr
+            type=edge,enable=true,priority=700,prefix=,suffix=,branch=${{ env.DEFAULT_BRANCH }}
           labels: |
             io.artifacthub.package.readme-url=https://raw.githubusercontent.com/${{ env.PUSH_IMAGE_REGISTRY }}/${{ env.TARGET_IMAGE_NAME }}/refs/heads/main/README.md
             org.opencontainers.image.created=${{ steps.date.outputs.date }}
@@ -98,7 +102,7 @@ jobs:
             org.opencontainers.image.title=${{ github.env.TARGET_IMAGE_NAME }}
             org.opencontainers.image.url=https://github.com/${{ env.PUSH_IMAGE_REGISTRY }}/${{ env.TARGET_IMAGE_NAME }}
             org.opencontainers.image.vendor=${{ github.repository_owner }}
-            org.opencontainers.image.version=${{ env.DEFAULT_TAG }}.{{date 'YYYYMMDD'}}
+            org.opencontainers.image.version=${{ steps.set_base.outputs.base_tag }}.{{date 'YYYYMMDD'}}
             io.artifacthub.package.deprecated=false
             io.artifacthub.package.keywords=${{ env.IMAGE_KEYWORDS }}
             io.artifacthub.package.license=Apache-2.0
