@@ -18,9 +18,9 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=cache,dst=/var/cache \
     --mount=type=cache,dst=/var/log \
     --mount=type=tmpfs,dst=/tmp \
-    /ctx/109-optfix.sh && \
-    /ctx/util/optfix.sh && \
+    /ctx/109-opt_prep.sh && \
     /ctx/110-desktop_packages.sh && \
+    /ctx/util/optfix.sh && \
     /ctx/util/finalize_layer.sh
     
 RUN bootc container lint
@@ -48,9 +48,9 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=cache,dst=/var/cache \
     --mount=type=cache,dst=/var/log \
     --mount=type=tmpfs,dst=/tmp \
-    /ctx/109-optfix.sh && \
-    /ctx/util/optfix.sh && \
+    /ctx/109-opt_prep.sh && \
     /ctx/110-desktop_packages.sh && \
+    /ctx/util/optfix.sh && \
     /ctx/util/finalize_layer.sh
     
 RUN bootc container lint
