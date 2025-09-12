@@ -4,6 +4,6 @@ echo "::group:: ===$(basename "$0")==="
 
 set -ouex pipefail
 
-mkdir -p /usr/lib/opt/brave
+mkdir -p /var/opt
 
 echo "::endgroup::"
