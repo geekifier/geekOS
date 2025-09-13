@@ -23,6 +23,7 @@ env:
   PUSH_IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
   SOURCE_IMAGE_TAG: stable
   DEFAULT_BRANCH: main
+  PR_ID: ${{ github.event.pull_request.number || null }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
@@ -79,7 +80,7 @@ jobs:
       - name: Set base tag name
         id: set_base
         run: |
-          echo "base_tag=${{ github.ref_name == env.DEFAULT_BRANCH && github.ref_name || 'dev' }}" >> "$GITHUB_OUTPUT"
+          echo "base_tag=${{ env.PR_ID && format('pr{0}', env.PR_ID) || github.ref_name }}" >> "$GITHUB_OUTPUT"
 
       - name: Parse source image metadata
         id: get_source_image
@@ -110,9 +111,8 @@ jobs:
           # This generates all the tags for your image, you can add custom tags here too!
           # Default tags are "$DEFAULT_TAG" and "$DEFAULT_TAG.$date".
           tags: |
-            type=raw,value=${{ steps.set_base.outputs.base_tag }}
+            type=raw,value=${{ steps.set_base.outputs.base_tag }}-${{ steps.source_image.outputs.version }}
             type=raw,value=${{ steps.set_base.outputs.base_tag }}.{{date 'YYYYMMDD'}}
-            type=raw,value=${{ steps.source_image.outputs.version }}
             type=sha,enable=${{ github.event_name == 'pull_request' }}
             type=edge,enable=true,priority=700,prefix=,suffix=,branch=${{ env.DEFAULT_BRANCH }}
           labels: |
@@ -129,7 +129,7 @@ jobs:
             io.artifacthub.package.keywords=${{ env.IMAGE_KEYWORDS }}
             io.artifacthub.package.license=Apache-2.0
             io.artifacthub.package.logo-url=${{ env.IMAGE_LOGO_URL }}
-            io.artifacthub.package.prerelease=false
+            io.artifacthub.package.prerelease=${{ github.event_name == 'pull_request' && true || false }}
             containers.bootc=1
           sep-tags: ' '
           sep-annotations: ' '
