@@ -25,7 +25,7 @@ env:
   SOURCE_IMAGE_TAG: stable
   DEFAULT_BRANCH: main
   PR_ID: ${{ github.event.pull_request.number || null }}
-  RECHUNK_IMAGE: 'ghcr.io/hhd-dev/rechunk:v1.2.2'
+  RECHUNK_IMAGE: 'ghcr.io/hhd-dev/rechunk@sha256:51ffc4c31ac050c02ae35d8ba9e5f5e518b76cfc9b37372df4b881974978443c' # v1.2.3
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
@@ -45,8 +45,10 @@ jobs:
       fail-fast: false
       matrix:
         image_map:
-          [bazzite-gnome:geekos, bazzite-gnome-nvidia-open:geekos-nvidia]
-
+          # disabling nvidia for now
+          # - 'bazzite-gnome-nvidia-open:geekos-nvidia'
+          - 'bazzite-gnome:geekos'
+    name: ${{ format('build:{0}', matrix.image_map) }}
     steps:
       - name: Set build variables
         id: build_setup
@@ -58,7 +60,9 @@ jobs:
           echo "SOURCE_IMAGE_NAME=${SOURCE_IMAGE,,}" >> ${GITHUB_ENV}
           echo "TARGET_IMAGE_NAME=${TARGET_IMAGE,,}" >> ${GITHUB_ENV}
           PUSH_IMAGE="${{ github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}"
-          echo "push_image=${PUSH_IMAGE:-false}" >> ${GITHUB_OUTPUT}
+          #echo "push_image=${PUSH_IMAGE:-false}" >> ${GITHUB_OUTPUT}
+          # TESTING - REMOVE BEFORE MERGE
+          echo "push_image=true" >> ${GITHUB_OUTPUT}
 
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
@@ -120,8 +124,9 @@ jobs:
         id: metadata
         with:
           tags: |
-            type=raw,value=${{ steps.set_base.outputs.base_tag }}-${{ steps.source_image.outputs.version }}
-            type=raw,value=${{ steps.set_base.outputs.base_tag }}.{{date 'YYYYMMDD'}}
+            type=raw,enable=true,value=${{ steps.set_base.outputs.base_tag }}-${{ steps.source_image.outputs.version }}
+            type=raw,enable=true,value=${{ steps.set_base.outputs.base_tag }}.{{date 'YYYYMMDD'}}
+            type=raw,value=${{ steps.set_base.outputs.base_tag }},priority=500
             type=sha,enable=${{ github.event_name == 'pull_request' }}
             type=edge,enable=true,priority=700,prefix=,suffix=,branch=${{ env.DEFAULT_BRANCH }}
           labels: |
@@ -178,9 +183,10 @@ jobs:
 
       - name: Run Rechunker
         id: rechunk
+        # Also update the RECHUNK_IMAGE env var to match the image name and ref for this commit!
         uses: hhd-dev/rechunk@ded27feba22df48134eece2c66ba0fca1289ff40 # v1.2.3
         with:
-          rechunk: 'ghcr.io/hhd-dev/rechunk:v1.2.3'
+          rechunk: ${{ env.RECHUNK_IMAGE }}
           ref: 'pre-rechunk'
           prev-ref: '${{ steps.generate-prev-ref.outputs.ref }}'
           revision: '${{ github.sha }}'
@@ -196,40 +202,25 @@ jobs:
         env:
           TAGS: ${{ steps.metadata.outputs.tags }}
           REF: ${{ steps.rechunk.outputs.ref }}
-          REGISTRY_USER: ${{ github.actor }}
-          REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
-          DEST_IMAGE="${PUSH_IMAGE_REGISTRY}/${TARGET_IMAGE_NAME}"
-          # Use the Rechunk-produced OCI ref directly as the source
-          SRC_REF="${REF}"
-          # Split space-separated tags from metadata action into an array
-          read -r -a tags <<< "${TAGS}"
-          if [ ${#tags[@]} -eq 0 ]; then
-            echo "No tags provided by metadata step; nothing to push" >&2
-            exit 1
-          fi
-
-          # Push the first tag with all the layers
-          PRIMARY_TAG="${tags[0]}"
-          echo "Pushing primary tag ${DEST_IMAGE}:${PRIMARY_TAG} from ${SRC_REF}"
-          sudo skopeo copy --retry-times 3 --preserve-digests \
-            --dest-creds "${REGISTRY_USER}:${REGISTRY_PASSWORD}" \
-            "${SRC_REF}" "docker://${DEST_IMAGE}:${PRIMARY_TAG}"
-
-          # Add additional tags efficiently (no layer re-upload needed)
-          for (( i=1; i<${#tags[@]}; i++ )); do
-            tag="${tags[$i]}"
-            echo "Adding additional tag ${DEST_IMAGE}:${tag}"
-            sudo skopeo copy --retry-times 3 \
-              --dest-creds "${REGISTRY_USER}:${REGISTRY_PASSWORD}" \
-              "docker://${DEST_IMAGE}:${PRIMARY_TAG}" "docker://${DEST_IMAGE}:${tag}"
+          log_sum() { echo "$1" >> $GITHUB_STEP_SUMMARY; }
+          log_sum '# Push to GHCR result'
+          log_sum '```'
+          echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u ${{ github.actor }} --password-stdin
+          for tag in ${{ steps.metadata.outputs.tags }}; do
+            dest_image="${{ env.PUSH_IMAGE_REGISTRY }}/${{ env.TARGET_IMAGE_NAME }}:$tag"
+            sudo skopeo copy ${{ steps.rechunk.outputs.ref }} docker://$dest_image && 
+              log_sum "$dest_image"
           done
+          log_sum '```'
 
-          # Get digest for signing from the primary tag
-          echo "primary_tag=${PRIMARY_TAG}" >> "$GITHUB_OUTPUT"
-          DIGEST=$(sudo skopeo inspect --format '{{.Digest}}' "docker://${DEST_IMAGE}:${PRIMARY_TAG}")
-          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+      - name: Get Image Digest
+        id: final_digest
+        run: |
+          # Get digest for signing
+          DIGEST=$(sudo skopeo inspect --format '{{.Digest}}' ${{ steps.rechunk.outputs.ref }})
+          echo "Digest is: $DIGEST"
+          echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
 
       - name: Install Cosign
         if: ${{ steps.build_setup.outputs.push_image == 'true' }}
@@ -249,6 +240,6 @@ jobs:
           IMAGE_FULL="${PUSH_IMAGE_REGISTRY}/${TARGET_IMAGE_NAME}"
           cosign sign -y --key env://COSIGN_PRIVATE_KEY "${IMAGE_FULL}@${DIGEST}"
         env:
-          DIGEST: ${{ steps.push.outputs.digest }}
+          DIGEST: ${{ steps.final_digest.outputs.digest }}
           COSIGN_EXPERIMENTAL: false
           COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
