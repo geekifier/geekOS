@@ -1,6 +1,6 @@
 ---
 name: Build container image with rechunk
-on:
+"on":
   pull_request:
     branches:
       - main
@@ -9,7 +9,7 @@ on:
       - '/assets/**'
       - '.github/workflows/build_iso*.yml'
   schedule:
-    - cron: '05 10 * * *' # 10:05am UTC everyday
+    - cron: '05 10 * * *'  # 10:05am UTC everyday
   push:
     branches:
       - main
@@ -17,15 +17,16 @@ on:
   workflow_dispatch:
 
 env:
+  DEFAULT_BRANCH: main
   IMAGE_DESC: 'geekOS Bazzite Image'
   IMAGE_KEYWORDS: 'bootc,ublue,universal-blue,bazzite,geekos,custom'
-  IMAGE_LOGO_URL: 'https://raw.githubusercontent.com/geekifier/geekos/master/assets/img/geekos_cropped.png'
+  IMAGE_LOGO_URL: 'https://raw.githubusercontent.com/geekifier/geekos/${{ env.DEFAULT_BRANCH }}/assets/img/geekos_cropped.png'
   PULL_IMAGE_REGISTRY: ghcr.io/ublue-os
   PUSH_IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
   SOURCE_IMAGE_TAG: stable
-  DEFAULT_BRANCH: main
   PR_ID: ${{ github.event.pull_request.number || null }}
-  RECHUNK_IMAGE: 'ghcr.io/hhd-dev/rechunk@sha256:51ffc4c31ac050c02ae35d8ba9e5f5e518b76cfc9b37372df4b881974978443c' # v1.2.3
+  RECHUNK_IMAGE: |
+    ghcr.io/hhd-dev/rechunk@sha256:51ffc4c31ac050c02ae35d8ba9e5f5e518b76cfc9b37372df4b881974978443c # v1.2.3
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
@@ -59,9 +60,7 @@ jobs:
           echo "SOURCE_IMAGE_NAME=${SOURCE_IMAGE,,}" >> ${GITHUB_ENV}
           echo "TARGET_IMAGE_NAME=${TARGET_IMAGE,,}" >> ${GITHUB_ENV}
           PUSH_IMAGE="${{ github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}"
-          #echo "push_image=${PUSH_IMAGE:-false}" >> ${GITHUB_OUTPUT}
-          # TESTING - REMOVE BEFORE MERGE
-          echo "push_image=true" >> ${GITHUB_OUTPUT}
+          echo "push_image=${PUSH_IMAGE:-false}" >> ${GITHUB_OUTPUT}
 
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
@@ -165,22 +164,6 @@ jobs:
       - name: Login to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      - name: Generate previous reference
-        id: generate-prev-ref
-        shell: bash
-        run: |
-          #if [ "${{ github.event.inputs.fresh-rechunk }}" == "true" ]; then
-          #  IMAGEREF=""
-          #else
-          # reference the previous image within this branch
-          IMAGEREF="${{ env.PUSH_IMAGE_REGISTRY }}/${{ env.TARGET_IMAGE_NAME }}:${{ steps.set_base.outputs.base_tag }}"
-          #fi
-
-          echo "ref=${IMAGEREF}" >> $GITHUB_OUTPUT
-
-          echo "Generated the following:"
-          cat $GITHUB_OUTPUT
-
       - name: Run Rechunker
         id: rechunk
         # Also update the RECHUNK_IMAGE env var to match the image name and ref for this commit!
@@ -188,7 +171,7 @@ jobs:
         with:
           rechunk: ${{ env.RECHUNK_IMAGE }}
           ref: 'pre-rechunk'
-          prev-ref: '${{ steps.generate-prev-ref.outputs.ref }}'
+          prev-ref: '${{ env.PUSH_IMAGE_REGISTRY }}/${{ env.TARGET_IMAGE_NAME }}:${{ steps.set_base.outputs.base_tag }}'
           revision: '${{ github.sha }}'
           version: '${{ steps.metadata.outputs.version }}'
           labels: |
