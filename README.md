@@ -1,6 +1,9 @@
 # geekOS
 
-![geek](./assets/img/geekos_banner.png)
+<!-- markdownlint-disable MD033 -->
+<p align="center">
+  <img src="assets/img/geekos_banner.png" alt="geekOS banner">
+</p>
 
 [![Build container image](https://github.com/geekifier/geekOS/actions/workflows/build.yml/badge.svg)](https://github.com/geekifier/geekOS/actions/workflows/build.yml)
 
