@@ -21,7 +21,7 @@ packages=(
 )
 
 if [[ "${#packages[@]}" -gt 0 ]]; then
-    dnf5 install -yq "${packages[@]}"
+    DNF5_FORCE_INTERACTIVE=0 dnf5 install -yq "${packages[@]}"
 else
     echo "No packages to install"
 fi

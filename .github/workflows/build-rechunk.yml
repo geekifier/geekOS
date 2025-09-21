@@ -1,17 +1,35 @@
 ---
-name: Build container image
-on:
+name: Build container image with rechunk
+"on":
+  pull_request:
+    branches:
+      - main
+    paths-ignore: &ignorePaths
+      - '**.md'
+      - '/assets/**'
+      - '.github/workflows/build_iso*.yml'
+  schedule:
+    - cron: '05 10 * * *'  # 10:05am UTC everyday
+  push:
+    branches:
+      - main
+    paths-ignore: *ignorePaths
   workflow_dispatch:
 
 env:
+  DEFAULT_BRANCH: main
   IMAGE_DESC: 'geekOS Bazzite Image'
   IMAGE_KEYWORDS: 'bootc,ublue,universal-blue,bazzite,geekos,custom'
-  IMAGE_LOGO_URL: 'https://raw.githubusercontent.com/geekifier/geekos/master/assets/img/geekos_cropped.png'
+  IMAGE_LOGO_URL: 'https://raw.githubusercontent.com/geekifier/geekos/main/assets/img/geekos_cropped.png'
   PULL_IMAGE_REGISTRY: ghcr.io/ublue-os
   PUSH_IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
   SOURCE_IMAGE_TAG: stable
-  DEFAULT_BRANCH: main
   PR_ID: ${{ github.event.pull_request.number || null }}
+  # Rechunk OCI image pinned by digest.
+  # Do NOT add inline comments on the value line; this string is interpolated into shell commands
+  # inside the composite action, and a '#' would terminate the line unexpectedly.
+  #               v1.2.3
+  RECHUNK_IMAGE: "ghcr.io/hhd-dev/rechunk@sha256:51ffc4c31ac050c02ae35d8ba9e5f5e518b76cfc9b37372df4b881974978443c"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
@@ -19,7 +37,6 @@ concurrency:
 
 jobs:
   build_push:
-    name: Build and push image
     runs-on: ubuntu-24.04
 
     permissions:
@@ -31,10 +48,12 @@ jobs:
       fail-fast: false
       matrix:
         image_map:
-          [bazzite-gnome:geekos, bazzite-gnome-nvidia-open:geekos-nvidia]
-
+          # disabling nvidia for now
+          # - 'bazzite-gnome-nvidia-open:geekos-nvidia'
+          - 'bazzite-gnome:geekos'
+    name: ${{ format('build:{0}', matrix.image_map) }}
     steps:
-      - name: Set source and target image names
+      - name: Set build variables
         id: build_setup
         run: |
           # Split the matrix input into source and target image names
@@ -60,6 +79,22 @@ jobs:
           # https://artifacthub.io/docs/topics/repositories/container-images/
           # https://linux.die.net/man/1/date
           echo "date=$(date -u +%Y\-%m\-%d\T%H\:%M\:%S\Z)" >> $GITHUB_OUTPUT
+
+      - name: Maximize build space
+        uses: ublue-os/remove-unwanted-software@cc0becac701cf642c8f0a6613bbdaf5dc36b259e #v9
+        with:
+          remove-cached-tools: false
+          remove-docker-images: false
+          remove-large-packages: false
+
+      - name: Pull image dependencies
+        uses: Wandalen/wretry.action@e68c23e6309f2871ca8ae4763e7629b9c258e1ea # v3.8.0
+        with:
+          attempt_limit: 3
+          attempt_delay: 15000
+          command: |
+            sudo podman pull ${{ env.PULL_IMAGE_REGISTRY }}/${{ env.SOURCE_IMAGE_NAME }}:${{ env.SOURCE_IMAGE_TAG }}
+            sudo podman pull ${{ env.RECHUNK_IMAGE }}
 
       - name: Set base tag name
         id: set_base
@@ -91,8 +126,9 @@ jobs:
         id: metadata
         with:
           tags: |
-            type=raw,value=${{ steps.set_base.outputs.base_tag }}-${{ steps.source_image.outputs.version }}
-            type=raw,value=${{ steps.set_base.outputs.base_tag }}.{{date 'YYYYMMDD'}}
+            type=raw,enable=true,value=${{ steps.set_base.outputs.base_tag }}-${{ steps.source_image.outputs.version }}
+            type=raw,enable=true,value=${{ steps.set_base.outputs.base_tag }}.{{date 'YYYYMMDD'}}
+            type=raw,value=${{ steps.set_base.outputs.base_tag }},priority=500
             type=sha,enable=${{ github.event_name == 'pull_request' }}
             type=edge,enable=true,priority=700,prefix=,suffix=,branch=${{ env.DEFAULT_BRANCH }}
           labels: |
@@ -114,60 +150,82 @@ jobs:
           sep-tags: ' '
           sep-annotations: ' '
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3
+      - name: Build Image
+        id: build_image
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sudo -E buildah build \
+            --target "${{ env.TARGET_IMAGE_NAME }}" \
+            --build-arg "SOURCE_IMAGE_NAME=${{ env.SOURCE_IMAGE_NAME }}" \
+            --build-arg "TARGET_IMAGE_NAME=${{ env.TARGET_IMAGE_NAME }}" \
+            --secret "id=GITHUB_TOKEN,env=GITHUB_TOKEN" \
+            --tag pre-rechunk \
+            --tag '${{ env.TARGET_IMAGE_NAME }}:${{ fromJSON(steps.metadata.outputs.json).labels['org.opencontainers.image.version'] }}' \
+            ./Containerfile
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Run Rechunker
+        id: rechunk
+        # Also update the RECHUNK_IMAGE env var to match the image name and ref for this commit!
+        uses: hhd-dev/rechunk@ded27feba22df48134eece2c66ba0fca1289ff40 # v1.2.3
+        with:
+          rechunk: ${{ env.RECHUNK_IMAGE }}
+          ref: 'pre-rechunk'
+          prev-ref: '${{ env.PUSH_IMAGE_REGISTRY }}/${{ env.TARGET_IMAGE_NAME }}:${{ steps.set_base.outputs.base_tag }}'
+          revision: '${{ github.sha }}'
+          version: "${{ fromJSON(steps.metadata.outputs.json).labels['org.opencontainers.image.version'] }}"
+          labels: |
+            ${{ steps.metadata.outputs.labels }}
+            org.universal-blue.pkg.kernel=<relver:kernel>
+          git: '${{ github.workspace }}'
+
+      - name: Push OCI layout to GHCR
+        id: push
+        if: ${{ steps.build_setup.outputs.push_image == 'true' }}
+        env:
+          TAGS: ${{ steps.metadata.outputs.tags }}
+          REF: ${{ steps.rechunk.outputs.ref }}
+        run: |
+          log_sum() { echo "$1" >> $GITHUB_STEP_SUMMARY; }
+          log_sum '# Push to GHCR result'
+          log_sum '```'
+          echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u ${{ github.actor }} --password-stdin
+          for tag in ${{ steps.metadata.outputs.tags }}; do
+            dest_image="${{ env.PUSH_IMAGE_REGISTRY }}/${{ env.TARGET_IMAGE_NAME }}:$tag"
+            sudo skopeo copy ${{ steps.rechunk.outputs.ref }} docker://$dest_image && 
+              log_sum "$dest_image"
+          done
+          log_sum '```'
+
+      - name: Get Image Digest
+        id: final_digest
+        run: |
+          # Get digest for signing
+          DIGEST=$(sudo skopeo inspect --format '{{.Digest}}' ${{ steps.rechunk.outputs.ref }})
+          echo "Digest is: $DIGEST"
+          echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
+
+      - name: Install Cosign
+        if: ${{ steps.build_setup.outputs.push_image == 'true' }}
+        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+
+      - name: Login to GHCR for cosign
+        if: ${{ steps.build_setup.outputs.push_image == 'true' }}
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build Image
-        id: build_image
-        uses: redhat-actions/buildah-build@7a95fa7ee0f02d552a32753e7414641a04307056 # v2
-        with:
-          containerfiles: |
-            ./Containerfile
-          # Postfix image name with -custom to make it a little more descriptive
-          # Syntax: https://docs.github.com/en/actions/learn-github-actions/expressions#format
-          image: '${{ env.TARGET_IMAGE_NAME }}'
-          tags: '${{ steps.metadata.outputs.tags }}'
-          labels: '${{ steps.metadata.outputs.labels }}'
-          layers: true
-          oci: false
-          extra-args: |
-            --target ${{ env.TARGET_IMAGE_NAME }}
-          # Did not observe much performance impact from ghcr.io caching, will revisit.
-          # extra-args: |
-          #   --cache-to ${{ env.PUSH_IMAGE_REGISTRY }}/cache/${{ env.TARGET_IMAGE_NAME }}
-          #   --cache-from ${{ env.PUSH_IMAGE_REGISTRY }}/cache/${{ env.TARGET_IMAGE_NAME }}
-          build-args: |
-            SOURCE_IMAGE_NAME=${{ env.SOURCE_IMAGE_NAME }}
-            TARGET_IMAGE_NAME=${{ env.TARGET_IMAGE_NAME }}
-
-      - name: Push To GHCR
-        uses: redhat-actions/push-to-registry@5ed88d269cf581ea9ef6dd6806d01562096bee9c # v2
-        if: steps.build_setup.outputs.push_image == 'true'
-        id: push
-        env:
-          REGISTRY_USER: ${{ github.actor }}
-          REGISTRY_PASSWORD: ${{ github.token }}
-        with:
-          registry: ${{ env.PUSH_IMAGE_REGISTRY }}
-          image: ${{ env.TARGET_IMAGE_NAME }}
-          tags: ${{ steps.metadata.outputs.tags }}
-          username: ${{ env.REGISTRY_USER }}
-          password: ${{ env.REGISTRY_PASSWORD }}
-
-      - name: Install Cosign
-        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-
       - name: Sign container image
-        if: steps.build_setup.outputs.push_image == 'true'
+        if: ${{ steps.build_setup.outputs.push_image == 'true' }}
         run: |
-          IMAGE_FULL="${{ env.PUSH_IMAGE_REGISTRY }}/${{ env.TARGET_IMAGE_NAME }}"
+          IMAGE_FULL="${PUSH_IMAGE_REGISTRY}/${TARGET_IMAGE_NAME}"
           cosign sign -y --key env://COSIGN_PRIVATE_KEY "${IMAGE_FULL}@${DIGEST}"
         env:
-          DIGEST: ${{ steps.push.outputs.digest }}
+          DIGEST: ${{ steps.final_digest.outputs.digest }}
           COSIGN_EXPERIMENTAL: false
           COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
