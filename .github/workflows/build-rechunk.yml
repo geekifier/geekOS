@@ -181,6 +181,33 @@ jobs:
             ${{ steps.metadata.outputs.labels }}
             org.universal-blue.pkg.kernel=<relver:kernel>
           git: '${{ github.workspace }}'
+          changelog: |
+            # geekOS <pretty>
+            ## Version: <version>
+
+            Major Components:
+              - Kernel: <relver:kernel>
+              - Gamescope: <relver:gamescope>
+              - Gnome: <version:gnome-shell>
+              - Mesa: <version:mesa-dri-drivers>
+
+            ## Changes since last version (<previous>):
+            ### Commits
+            <commits>
+            ### Package Changes:
+            <pkgupd>
+
+          formatters: |
+            commits.none=No changes\n
+            commits.commit=- **[<short>](https://github.com/geekifier/geekos/commit/<hash>)** <subject>\n
+            pkgupd.none=No package updates\n
+            pkgupd.add=- **<package>** Added at <new>\n
+            pkgupd.update=- **<package>** <old> → <new>\n
+            pkgupd.remove=- **<package>** <old> → Removed\n
+
+      - name: Print changelog
+        run: |
+          sudo cat ${{ steps.rechunk.outputs.changelog }} >> $GITHUB_STEP_SUMMARY
 
       - name: Push OCI layout to GHCR
         id: push
