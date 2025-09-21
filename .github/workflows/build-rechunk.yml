@@ -128,7 +128,12 @@ jobs:
 
       - name: Export source image metadata
         id: source_image
-        run: echo "version=${{ fromJSON(steps.get_source_image.outputs.outputs).version }}" >> $GITHUB_OUTPUT
+        run: |
+          VERSION="${{ fromJSON(steps.get_source_image.outputs.outputs).version }}"
+          # remove 'testing-' from version suffix to avoid ugly final tags
+          VERSION_SHORT="${VERSION//testing-/}"
+          echo "version_short=$VERSION_SHORT" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Image Metadata
         uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f # v5
@@ -141,9 +146,9 @@ jobs:
             #   base_tag: pr{PR_ID}|ref_name-{source_image_tag}
             type=raw,enable=true,value=${{ steps.set_base.outputs.base_tag }}
             # tag with base tag and upstream version
-            type=raw,enable=true,value=${{ steps.set_base.outputs.base_tag }}-${{ steps.source_image.outputs.version }}
+            type=raw,enable=true,value=${{ steps.set_base.outputs.base_tag }}-${{ steps.source_image.outputs.version_short }}
             # tag with upstream version and .YYMMDD suffix when pushed to DEFAULT_BRANCH
-            type=raw,enable=${{ github.ref_name == env.DEFAULT_BRANCH }},value=${{ steps.source_image.outputs.version }}.{{date 'YYMMDD'}}
+            type=raw,enable=${{ github.ref_name == env.DEFAULT_BRANCH }},value=${{ steps.source_image.outputs.version_short }}.{{date 'YYMMDD'}}
             # tag with upstream tag (stable, testing, etc) when pushed to DEFAULT_BRANCH
             type=raw,enable=${{ github.ref_name == env.DEFAULT_BRANCH }},value=${{ matrix.image_tags }},priority=600
             # tag with truncated sha256 checksum for PRs
