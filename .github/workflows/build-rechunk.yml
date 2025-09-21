@@ -63,9 +63,7 @@ jobs:
           echo "SOURCE_IMAGE_NAME=${SOURCE_IMAGE,,}" >> ${GITHUB_ENV}
           echo "TARGET_IMAGE_NAME=${TARGET_IMAGE,,}" >> ${GITHUB_ENV}
           PUSH_IMAGE="${{ github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}"
-          # TESTING - REMOVE BEFORE MERGE
-          # echo "push_image=${PUSH_IMAGE:-false}" >> ${GITHUB_OUTPUT}
-          echo "push_image=true" >> ${GITHUB_OUTPUT}
+          echo "push_image=${PUSH_IMAGE:-false}" >> ${GITHUB_OUTPUT}
 
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
@@ -183,10 +181,33 @@ jobs:
             ${{ steps.metadata.outputs.labels }}
             org.universal-blue.pkg.kernel=<relver:kernel>
           git: '${{ github.workspace }}'
+          changelog: |
+            # geekOS <pretty>
+            ## Version: <version>
+
+            Major Components:
+              - Kernel: <relver:kernel>
+              - Gamescope: <relver:gamescope>
+              - Gnome: <version:gnome-shell>
+              - Mesa: <version:mesa-dri-drivers>
+
+            ## Changes since last version (<previous>):
+            ### Commits
+            <commits>
+            ### Package Changes:
+            <pkgupd>
+
+          formatters: |
+            commits.none=No changes\n
+            commits.commit=- **[<short>](https://github.com/geekifier/geekos/commit/<hash>)** <subject>\n
+            pkgupd.none=No package updates\n
+            pkgupd.add=- **<package>** Added at <new>\n
+            pkgupd.update=- **<package>** <old> → <new>\n
+            pkgupd.remove=- **<package>** <old> → Removed\n
 
       - name: Print changelog
         run: |
-          sudo cat ${{ steps.rechunk.outputs.changelog }}
+          sudo cat ${{ steps.rechunk.outputs.changelog }} >> $GITHUB_STEP_SUMMARY
 
       - name: Push OCI layout to GHCR
         id: push
