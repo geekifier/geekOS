@@ -212,7 +212,7 @@ jobs:
 
       - name: Print changelog
         run: |
-          sudo cat ${{ steps.rechunk.outputs.changelog }} >> $GITHUB_STEP_SUMMARY
+          sudo cat ${{ steps.rechunk.outputs.changelog }} | tee -a $GITHUB_STEP_SUMMARY
 
       - name: Push OCI layout to GHCR
         id: push
