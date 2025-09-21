@@ -63,7 +63,9 @@ jobs:
           echo "SOURCE_IMAGE_NAME=${SOURCE_IMAGE,,}" >> ${GITHUB_ENV}
           echo "TARGET_IMAGE_NAME=${TARGET_IMAGE,,}" >> ${GITHUB_ENV}
           PUSH_IMAGE="${{ github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}"
-          echo "push_image=${PUSH_IMAGE:-false}" >> ${GITHUB_OUTPUT}
+          # TESTING - REMOVE BEFORE MERGE
+          # echo "push_image=${PUSH_IMAGE:-false}" >> ${GITHUB_OUTPUT}
+          echo "push_image=true" >> ${GITHUB_OUTPUT}
 
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
@@ -181,6 +183,10 @@ jobs:
             ${{ steps.metadata.outputs.labels }}
             org.universal-blue.pkg.kernel=<relver:kernel>
           git: '${{ github.workspace }}'
+
+      - name: Print changelog
+        run: |
+          sudo cat ${{ steps.rechunk.outputs.changelog }}
 
       - name: Push OCI layout to GHCR
         id: push
