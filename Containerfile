@@ -1,10 +1,11 @@
 ARG SOURCE_IMAGE_NAME="${SOURCE_IMAGE_NAME:-bazzite-gnome}"
 ARG TARGET_IMAGE_NAME="${TARGET_IMAGE_NAME:-geekos}"
+ARG SOURCE_IMAGE_TAG="${SOURCE_IMAGE_TAG:-stable}"
 
 FROM scratch AS ctx
 COPY build_files /
 
-FROM ghcr.io/ublue-os/${SOURCE_IMAGE_NAME}:stable AS geekos
+FROM ghcr.io/ublue-os/${SOURCE_IMAGE_NAME}:${SOURCE_IMAGE_TAG} AS geekos
 
 RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=cache,dst=/var/cache \
@@ -34,7 +35,7 @@ RUN --mount=type=secret,id=rootpass \
           passwd --stdin < /run/secrets/rootpass; \
         } || echo ":: rootpass secret not provided; skipping"'
 
-FROM ghcr.io/ublue-os/${SOURCE_IMAGE_NAME}:stable AS geekos-nvidia
+FROM ghcr.io/ublue-os/${SOURCE_IMAGE_NAME}:${SOURCE_IMAGE_TAG} AS geekos-nvidia
 
 RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=cache,dst=/var/cache \

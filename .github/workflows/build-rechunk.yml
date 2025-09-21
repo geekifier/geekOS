@@ -51,7 +51,10 @@ jobs:
           # disabling nvidia for now
           # - 'bazzite-gnome-nvidia-open:geekos-nvidia'
           - 'bazzite-gnome:geekos'
-    name: ${{ format('build:{0}', matrix.image_map) }}
+        image_tags: 
+          - stable
+          - testing
+    name: ${{ format('build:{0}:{1}', matrix.image_map, matrix.image_tags) }}
     steps:
       - name: Set build variables
         id: build_setup
@@ -93,13 +96,13 @@ jobs:
           attempt_limit: 3
           attempt_delay: 15000
           command: |
-            sudo podman pull ${{ env.PULL_IMAGE_REGISTRY }}/${{ env.SOURCE_IMAGE_NAME }}:${{ env.SOURCE_IMAGE_TAG }}
+            sudo podman pull ${{ env.PULL_IMAGE_REGISTRY }}/${{ env.SOURCE_IMAGE_NAME }}:${{ matrix.image_tags }}
             sudo podman pull ${{ env.RECHUNK_IMAGE }}
 
       - name: Set base tag name
         id: set_base
         run: |
-          echo "base_tag=${{ env.PR_ID && format('pr{0}', env.PR_ID) || github.ref_name }}" >> "$GITHUB_OUTPUT"
+          echo "base_tag=${{ env.PR_ID && format('pr{0}', env.PR_ID) || matrix.image_tags == 'testing' && 'testing' || github.ref_name }}" >> "$GITHUB_OUTPUT"
 
       - name: Parse source image metadata
         id: get_source_image
@@ -109,7 +112,7 @@ jobs:
           attempt_delay: 15000
           command: |
             set -eo pipefail
-            skopeo inspect docker://${{ env.PULL_IMAGE_REGISTRY }}/${{ env.SOURCE_IMAGE_NAME }}:${{ env.SOURCE_IMAGE_TAG }} > source.json
+            skopeo inspect docker://${{ env.PULL_IMAGE_REGISTRY }}/${{ env.SOURCE_IMAGE_NAME }}:${{ matrix.image_tags }}> source.json
             ver=$(jq -r '.Labels["org.opencontainers.image.version"]' source.json)
             if [ -z "$ver" ] || [ "null" = "$ver" ]; then
               echo "inspected image version must not be empty or null"
@@ -129,8 +132,9 @@ jobs:
             type=raw,enable=true,value=${{ steps.set_base.outputs.base_tag }}-${{ steps.source_image.outputs.version }}
             type=raw,enable=true,value=${{ steps.set_base.outputs.base_tag }}.{{date 'YYYYMMDD'}}
             type=raw,value=${{ steps.set_base.outputs.base_tag }},priority=500
+            type=raw,enable=${{ github.event_name != 'pull_request' }},value=${{ matrix.image_tags }},priority=600
             type=sha,enable=${{ github.event_name == 'pull_request' }}
-            type=edge,enable=true,priority=700,prefix=,suffix=,branch=${{ env.DEFAULT_BRANCH }}
+            type=edge,enable=${{ matrix.image_tags != 'testing' }},priority=700,prefix=,suffix=,branch=${{ env.DEFAULT_BRANCH }}
           labels: |
             io.artifacthub.package.readme-url=https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/main/README.md
             org.opencontainers.image.created=${{ steps.date.outputs.date }}
@@ -159,6 +163,7 @@ jobs:
             --target "${{ env.TARGET_IMAGE_NAME }}" \
             --build-arg "SOURCE_IMAGE_NAME=${{ env.SOURCE_IMAGE_NAME }}" \
             --build-arg "TARGET_IMAGE_NAME=${{ env.TARGET_IMAGE_NAME }}" \
+            --build-arg "SOURCE_IMAGE_TAG=${{ matrix.image_tags }}" \
             --secret "id=GITHUB_TOKEN,env=GITHUB_TOKEN" \
             --tag pre-rechunk \
             --tag '${{ env.TARGET_IMAGE_NAME }}:${{ fromJSON(steps.metadata.outputs.json).labels['org.opencontainers.image.version'] }}' \
@@ -207,7 +212,7 @@ jobs:
 
       - name: Print changelog
         run: |
-          sudo cat ${{ steps.rechunk.outputs.changelog }} >> $GITHUB_STEP_SUMMARY
+          sudo cat ${{ steps.rechunk.outputs.changelog }} | tee -a $GITHUB_STEP_SUMMARY
 
       - name: Push OCI layout to GHCR
         id: push
