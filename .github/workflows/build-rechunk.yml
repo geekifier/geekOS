@@ -103,12 +103,12 @@ jobs:
         id: set_base
         run: |
           # if matrix.image_tags == 'testing', reset the value to avoid duplicate prefixes
-          TAG_PREFIX=${{ matrix.image_tags }}
-          PR_PREFIX=${{ env.PR_ID && format('pr{0}-', env.PR_ID) || ''}}
-          BRANCH_PREFIX=${{ format('{0}-', github.ref_name) }}
+          TAG_PREFIX="${{ matrix.image_tags }}"
+          PR_PREFIX="${{ env.PR_ID && format('pr{0}-', env.PR_ID) || ''}}"
+          BRANCH_PREFIX="${{ format('{0}-', github.ref_name) }}"
           # Set a base_tag that will be used as a previous_ref reference for rechunk, and for changelog
           # purposes.
-          echo "base_tag=${PR_PREFIX:=${{ github.ref_name }}}${TAG_PREFIX}" >> "$GITHUB_OUTPUT"
+          echo "base_tag=${PR_PREFIX:-${BRANCH_PREFIX}}${TAG_PREFIX}" >> "$GITHUB_OUTPUT"
 
       - name: Parse source image metadata
         id: get_source_image
