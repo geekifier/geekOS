@@ -7,6 +7,7 @@ set -ouex pipefail
 packages=(
   "code:code"
   "brave-browser:brave-browser"
+  "fedora:wireshark"
   "terra:coolercontrol"
   "terra:ghostty"
   "terra:mpv-nightly"

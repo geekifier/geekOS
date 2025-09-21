@@ -11,6 +11,7 @@ packages=(
     oddjob-mkhomedir
     printer-driver-brlaser
     neovim
+    nmap
     samba-common-tools
     samba-winbind
     samba-winbind-clients
