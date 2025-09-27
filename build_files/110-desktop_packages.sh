@@ -7,11 +7,13 @@ set -ouex pipefail
 packages=(
   "code::code"
   "brave-browser::brave-browser"
+  "copr:copr.fedorainfracloud.org:scottames:ghostty::ghostty"
   "fedora::hardinfo2"
+  "fedora::iperf3"
   "fedora::solaar"
+  "fedora::sysbench"
   "fedora::wireshark"
   "terra::coolercontrol"
-  "terra::ghostty"
   "terra::mpv-nightly"
 )
 
