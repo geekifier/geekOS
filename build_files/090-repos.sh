@@ -18,6 +18,7 @@ dnf5 -yq config-manager setopt brave-browser.enabled=false
 # copr repos
 copr_repos=(
     "ilyaz/LACT"
+    "scottames/ghostty"
 )
 
 # Enable defined copr repos
