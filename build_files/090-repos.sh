@@ -15,6 +15,16 @@ dnf5 -yq config-manager setopt brave-browser.enabled=false
 # dnf5 -yq config-manager setopt terra.enabled=true
 # dnf5 -yq config-manager setopt terra-extras.enabled=true
 
+# copr repos
+copr_repos=(
+    "ilyaz/LACT"
+)
+
+# Enable defined copr repos
+for repo in "${copr_repos[@]}"; do
+    dnf5 -yq copr enable "$repo"
+done
+
 # VSCode
 rpm --quiet --import https://packages.microsoft.com/keys/microsoft.asc
 
