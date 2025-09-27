@@ -24,22 +24,26 @@ if [[ "${TARGET_IMAGE_NAME:-}" != *nvidia* ]]; then
 fi
 
 
-((${#packages[@]})) || {
-  echo "No packages to install"
-  exit 0
-}
+(( ${#packages[@]} )) || { echo "No packages to install"; exit 0; }
 
-# CSV of unique repos, which can be supplied to --enablerepo
-repos_csv=$(
-  printf '%s\n' "${packages[@]}" |
-    awk -F:: '{print $1}' |
-    sort -u |
-    paste -sd,
-)
+# Install with one transaction per repo to ensure correct prioritization.
+declare -A repo_pkgs=()
+for spec in "${packages[@]}"; do
+  repo_id=${spec%%::*}
+  pkg_name=${spec##*::}
+  # Append (space separated) preserving order; guard for unset under set -u
+  repo_pkgs[$repo_id]="${repo_pkgs[$repo_id]:-} ${pkg_name}"
+done
 
-mapfile -t pkgs < <(printf '%s\n' "${packages[@]##*::}")
-
-DNF5_FORCE_INTERACTIVE=0 dnf5 install -yq --enable-repo="$repos_csv" "${pkgs[@]}"
+for repo_id in "${!repo_pkgs[@]}"; do
+  # Split the accumulated list into an array (handles leading space)
+  read -r -a _repo_pkg_array <<< "${repo_pkgs[$repo_id]}"
+  echo "Installing from repo '$repo_id': ${_repo_pkg_array[*]}"
+  if ! DNF5_FORCE_INTERACTIVE=0 dnf5 install -yq --enable-repo="$repo_id" "${_repo_pkg_array[@]}"; then
+    echo "Error: failed installing packages from repo '$repo_id'" >&2
+    exit 1
+  fi
+done
 
 # Disable copr repos after install
 
