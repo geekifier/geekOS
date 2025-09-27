@@ -10,7 +10,7 @@ env:
   PULL_IMAGE_REGISTRY: ghcr.io/ublue-os
   PUSH_IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
   SOURCE_IMAGE_TAG: stable
-  DEFAULT_BRANCH: main
+  DEFAULT_BRANCH: master
   PR_ID: ${{ github.event.pull_request.number || null }}
 
 concurrency:
@@ -96,11 +96,11 @@ jobs:
             type=sha,enable=${{ github.event_name == 'pull_request' }}
             type=edge,enable=true,priority=700,prefix=,suffix=,branch=${{ env.DEFAULT_BRANCH }}
           labels: |
-            io.artifacthub.package.readme-url=https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/main/README.md
+            io.artifacthub.package.readme-url=https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/${{ env.DEFAULT_BRANCH }}/README.md
             org.opencontainers.image.created=${{ steps.date.outputs.date }}
             org.opencontainers.image.description=${{ env.IMAGE_DESC }}
-            org.opencontainers.image.documentation=https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/main/README.md
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}/blob/main/Containerfile
+            org.opencontainers.image.documentation=https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/${{ env.DEFAULT_BRANCH }}/README.md
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}/blob/${{ env.DEFAULT_BRANCH }}/Containerfile
             org.opencontainers.image.title=${{ env.TARGET_IMAGE_NAME }}
             org.opencontainers.image.url=https://github.com/${{ github.repository }}
             org.opencontainers.image.vendor=${{ github.repository_owner }}
