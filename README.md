@@ -5,7 +5,7 @@
   <img src="assets/img/geekos_banner.png" alt="geekOS banner">
 </p>
 
-[![Build container image](https://github.com/geekifier/geekOS/actions/workflows/build.yml/badge.svg)](https://github.com/geekifier/geekOS/actions/workflows/build.yml)
+[![Build container image](https://github.com/geekifier/geekOS/actions/workflows/build-rechunk.yml/badge.svg)](https://github.com/geekifier/geekOS/actions/workflows/build-rechunk.yml)
 
 A custom uBlue image that should probably not be used by _anyone_.
 
