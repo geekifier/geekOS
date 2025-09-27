@@ -3,7 +3,7 @@ name: Build container image with rechunk
 "on":
   pull_request:
     branches:
-      - main
+      - master
     paths-ignore: &ignorePaths
       - '**.md'
       - '/assets/**'
@@ -12,15 +12,15 @@ name: Build container image with rechunk
     - cron: '05 10 * * *'  # 10:05am UTC everyday
   push:
     branches:
-      - main
+      - master
     paths-ignore: *ignorePaths
   workflow_dispatch:
 
 env:
-  DEFAULT_BRANCH: main
+  DEFAULT_BRANCH: master
   IMAGE_DESC: 'geekOS Bazzite Image'
   IMAGE_KEYWORDS: 'bootc,ublue,universal-blue,bazzite,geekos,custom'
-  IMAGE_LOGO_URL: 'https://raw.githubusercontent.com/geekifier/geekos/main/assets/img/geekos_cropped.png'
+  IMAGE_LOGO_URL: 'https://raw.githubusercontent.com/geekifier/geekos/master/assets/img/geekos_cropped.png'
   PULL_IMAGE_REGISTRY: ghcr.io/ublue-os
   PUSH_IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
   SOURCE_IMAGE_TAG: stable
@@ -154,11 +154,11 @@ jobs:
             # tag with truncated sha256 checksum for PRs
             type=sha,enable=${{ github.event_name == 'pull_request' }}
           labels: |
-            io.artifacthub.package.readme-url=https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/main/README.md
+            io.artifacthub.package.readme-url=https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/${{ env.DEFAULT_BRANCH }}/README.md
             org.opencontainers.image.created=${{ steps.date.outputs.date }}
             org.opencontainers.image.description=${{ env.IMAGE_DESC }}
-            org.opencontainers.image.documentation=https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/main/README.md
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}/blob/main/Containerfile
+            org.opencontainers.image.documentation=https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/${{ env.DEFAULT_BRANCH }}/README.md
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}/blob/${{ env.DEFAULT_BRANCH }}/Containerfile
             org.opencontainers.image.title=${{ env.TARGET_IMAGE_NAME }}
             org.opencontainers.image.url=https://github.com/${{ github.repository }}
             org.opencontainers.image.vendor=${{ github.repository_owner }}
