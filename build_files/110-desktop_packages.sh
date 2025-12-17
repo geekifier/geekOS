@@ -20,7 +20,7 @@ packages=(
 # Packages for non-nvidia images only
 
 if [[ "${TARGET_IMAGE_NAME:-}" != *nvidia* ]]; then
-  packages+=("copr:copr.fedorainfracloud.org:ilyaz:LACT::lact")
+  packages+=()
 fi
 
 
